@@ -23,6 +23,12 @@
 #   than editing this file:
 #
 #     {"mfa": {"onprem_ad": {"privileged_groups": ["Domain Admins", "Enterprise Admins"]}}}
+#
+#   Note: a user in more than one privileged group produces one
+#   `accounts` entry per group they're in (harmless - lib.deny_messages
+#   renders the same message string for each, and messages are a set,
+#   so the duplicates collapse). This only matters if you inspect
+#   `accounts` directly rather than the final `deny` output.
 # custom:
 #   controls: ["IA-2(1)"]
 #   framework: NIST SP 800-53 Rev. 5
@@ -33,7 +39,7 @@ import rego.v1
 
 default privileged_groups := ["Domain Admins", "Enterprise Admins", "Schema Admins"]
 
-privileged_groups := data.config.mfa.onprem_ad.privileged_groups
+privileged_groups := data.mfa.onprem_ad.privileged_groups
 
 default is_privileged(_) := false
 

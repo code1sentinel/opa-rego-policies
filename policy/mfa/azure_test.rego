@@ -15,7 +15,7 @@ test_extra_privileged_upn_via_config if {
 	mock_input := {"registration_details": [
 		{"userPrincipalName": "svc-deploy@contoso.com", "isAdmin": false, "isMfaRegistered": false},
 	]}
-	config := {"mfa": {"azure": {"extra_privileged_upns": ["svc-deploy@contoso.com"]}}}
+	config := {"azure": {"extra_privileged_upns": ["svc-deploy@contoso.com"]}}
 
-	deny == {"Privileged account 'svc-deploy@contoso.com' does not have MFA enabled."} with input as mock_input with data.config as config
+	deny == {"Privileged account 'svc-deploy@contoso.com' does not have MFA enabled."} with input as mock_input with data.mfa as config
 }

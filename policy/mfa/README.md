@@ -2,6 +2,27 @@
 
 Control: **NIST SP 800-53 Rev. 5 IA-2(1)** — privileged accounts must use multi-factor authentication.
 
+## Quick start
+
+```bash
+git clone https://github.com/code1sentinel/opa-rego-policies.git
+cd opa-rego-policies/policy/mfa
+./check.sh aws      # or: azure, gcp
+```
+
+`check.sh` runs the matching collector in `collectors/` (which calls your cloud provider's API with
+your already-configured CLI credentials — nothing is hardcoded or shipped with this repo), evaluates
+the result against the policy, prints any violations, and exits non-zero if it finds any. That exit
+code is what you wire into a pipeline gate — see "Wiring into a CI pipeline" below.
+
+`onprem_ad` and `ics_ot` are **templates**, not drop-in scripts — see "Why on-prem and ICS/OT are
+templates, not scripts" below for why, and edit the collector before running `./check.sh onprem_ad` /
+`./check.sh ics_ot`.
+
+Requires [`opa`](https://www.openpolicyagent.org/docs/#running-opa) and `jq` on your PATH, plus
+whichever platform CLI the collector you're using needs (`aws`, `az`, or `curl`+a GCP access token —
+see the prerequisites comment at the top of each `collectors/*_collect.sh`).
+
 ## Why it's split this way
 
 The rule "a privileged account without MFA is a finding" is the same everywhere. What differs per
@@ -21,14 +42,18 @@ Adding a sixth platform means writing a sixth adapter that produces the same nor
 ## Using an adapter with minimal edits
 
 You should not need to edit the `.rego` files at all. Each adapter reads its tunable values (which
-IAM policies count as "admin," which AD groups are privileged, etc.) from `data.config.mfa.<platform>`,
+IAM policies count as "admin," which AD groups are privileged, etc.) from `data.mfa.<platform>`,
 with a sane built-in default if you supply nothing. To customize, write your own small `config.json`
-and load it alongside the policy:
+and pass it to `check.sh` (`./check.sh aws config.json`), or load it directly:
 
 ```bash
-opa eval -i your_input.json -d policy/mfa -d config.json "data.policy.mfa.aws.deny"
+# using a collector's live output
+./collectors/aws_collect.sh | opa eval -I -d . -d config.json "data.policy.mfa.aws.deny"
+
+# or against your own hand-built input.json
+opa eval -i your_input.json -d . -d config.json "data.policy.mfa.aws.deny"
 # or, with conftest:
-conftest test your_input.json --policy policy/mfa --data config.json
+conftest test your_input.json --policy . --namespace policy.mfa.aws --data config.json
 ```
 
 Example `config.json` for the AWS adapter:
@@ -38,7 +63,7 @@ Example `config.json` for the AWS adapter:
 ```
 
 See the `METADATA` block at the top of each adapter for its exact expected `input` shape and which
-`data.config.mfa.<platform>` keys it honors.
+`data.mfa.<platform>` keys it honors.
 
 ## A deliberate limitation: ICS/OT
 
@@ -48,6 +73,33 @@ achievable control. Instead it evaluates MFA at the IT/OT boundary: every remote
 OT network (jump host, PAM broker, VPN concentrator) must require MFA. That maps to IEC 62443-3-3
 SR 1.1/1.2 and NIST SP 800-82 Rev. 3 Section 6.2, which is the realistic enforcement point for this
 control in an OT environment.
+
+## Why on-prem AD and ICS/OT are templates, not scripts
+
+`collectors/aws_collect.sh`, `azure_collect.sh`, and `gcp_collect.sh` are real, runnable scripts
+because AWS/Azure/GCP each expose one documented API you can call directly. On-prem AD and ICS/OT
+don't have that: "which MFA provider" (Duo, RSA, a RADIUS server, Okta...) and "which PAM/VPN tool
+brokers OT access" (CyberArk, Claroty, Dragos, a plain VPN concentrator...) vary per organization with
+no common API. `collectors/onprem_ad_collect.ps1` and `collectors/ics_ot_collect.sh` get you the AD
+half (or the output shape) and leave one function for you to fill in against your own tooling — they
+fail loudly with a clear message if you run them before editing that function.
+
+## Wiring into a CI pipeline
+
+Any CI system works the same way: run the collector, pipe it into `opa eval` (or use `check.sh`
+directly), and fail the job on a non-zero exit code. For example, in GitHub Actions:
+
+```yaml
+- name: Check AWS MFA enforcement (IA-2(1))
+  run: policy/mfa/check.sh aws
+  env:
+    AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+```
+
+This isn't a Terraform plan gate — it checks live IAM state, so it belongs in a scheduled/periodic
+workflow (e.g. nightly) rather than a per-PR check, unless your PR pipeline actually has live cloud
+credentials.
 
 ## Running the tests
 

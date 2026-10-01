@@ -22,6 +22,12 @@
 #   override to your own config.json rather than editing this file:
 #
 #     {"mfa": {"azure": {"extra_privileged_upns": ["svc-deploy@contoso.com"]}}}
+#
+#   Known gap: `isAdmin` reflects currently-activated directory roles
+#   only. A user with an eligible-but-not-yet-activated Privileged
+#   Identity Management (PIM) admin role will not show as privileged
+#   here. Covering that requires a separate call to the PIM API
+#   (roleEligibilityScheduleInstances) and is not implemented.
 # custom:
 #   controls: ["IA-2(1)"]
 #   framework: NIST SP 800-53 Rev. 5
@@ -32,7 +38,7 @@ import rego.v1
 
 default extra_privileged_upns := []
 
-extra_privileged_upns := data.config.mfa.azure.extra_privileged_upns
+extra_privileged_upns := data.mfa.azure.extra_privileged_upns
 
 default is_privileged(_) := false
 

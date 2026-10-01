@@ -30,7 +30,46 @@ test_custom_privileged_policy_arn_via_config if {
 		"mfa_active": false,
 		"attached_policy_arns": ["arn:aws:iam::aws:policy/CustomBillingAdmin"],
 	}]}
-	config := {"mfa": {"aws": {"privileged_policy_arns": ["arn:aws:iam::aws:policy/CustomBillingAdmin"]}}}
+	config := {"aws": {"privileged_policy_arns": ["arn:aws:iam::aws:policy/CustomBillingAdmin"]}}
 
-	deny == {"Privileged account 'carol' does not have MFA enabled."} with input as custom_input with data.config as config
+	deny == {"Privileged account 'carol' does not have MFA enabled."} with input as custom_input with data.mfa as config
+}
+
+test_deny_admin_via_group_attached_policy if {
+	mock := {"users": [{
+		"username": "dave",
+		"mfa_active": false,
+		"attached_policy_arns": [],
+		"group_attached_policy_arns": ["arn:aws:iam::aws:policy/AdministratorAccess"],
+	}]}
+
+	deny == {"Privileged account 'dave' does not have MFA enabled."} with input as mock
+}
+
+test_deny_admin_via_inline_wildcard_policy if {
+	mock := {"users": [{
+		"username": "erin",
+		"mfa_active": false,
+		"attached_policy_arns": [],
+		"inline_policy_documents": [{
+			"Version": "2012-10-17",
+			"Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}],
+		}],
+	}]}
+
+	deny == {"Privileged account 'erin' does not have MFA enabled."} with input as mock
+}
+
+test_scoped_inline_policy_not_flagged_as_privileged if {
+	mock := {"users": [{
+		"username": "frank",
+		"mfa_active": false,
+		"attached_policy_arns": [],
+		"inline_policy_documents": [{
+			"Version": "2012-10-17",
+			"Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}],
+		}],
+	}]}
+
+	count(deny) == 0 with input as mock
 }
